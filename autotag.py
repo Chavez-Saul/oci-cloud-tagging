@@ -260,7 +260,6 @@ def search_oci_query(search_query):
 ##########################################################################
 def findtags(collection, region_name):
     tagfile = "tag-" + str(datetime.date.today()) + "-" + region_name + ".csv"
-    user = str()
     num = 0
 
     with open(tagfile, "w") as out_file:
@@ -271,8 +270,10 @@ def findtags(collection, region_name):
         for r in collection:
             tag = r.defined_tags['Schedule']
 
+            user = ""
             if created_by_namespace in r.defined_tags:
-                user = r.defined_tags[created_by_namespace]['Created_by']
+                if 'Created_by' in r.defined_tags[created_by_namespace]:
+                    user = r.defined_tags[created_by_namespace]['Created_by']
 
             if 'AnyDay' in tag:
                 if '0' not in tag['AnyDay']:
@@ -477,7 +478,8 @@ if __name__ == '__main__':
         query_tag_not_exist = "query " + resources + " resources "
         query_tag_not_exist += "where "
         query_tag_not_exist += "    definedTags.namespace != 'Schedule' && "
-        query_tag_not_exist += "    ( lifecycleState = 'Active' ||  lifecycleState = 'Running' || lifecycleState = 'Stopped' || lifecycleState = 'Available') "
+        query_tag_not_exist += "    ( lifecycleState = 'Active' ||  lifecycleState = 'Running' || lifecycleState = 'Stopped' || "
+        query_tag_not_exist += "    lifecycleState = 'Available' ) "
         query_tag_not_exist += " && compartmentId  = '" + compartment_include + "'" if compartment_include else ""
         query_tag_not_exist += " && compartmentId != '" + compartment_exclude + "'" if compartment_exclude else ""
         query_tag_exist = query_tag_not_exist.replace("!= 'Schedule'", "= 'Schedule'")
