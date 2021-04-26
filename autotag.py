@@ -10,7 +10,6 @@
 # Application Command line parameters
 #
 #   -t config - Config file section to use (tenancy profile)
-#   -p proxy  - Set Proxy (i.e. www-proxy-server.com:80)
 #   -ip       - Use Instance Principals for Authentication
 #   -dt       - Use Instance Principals with delegation token for cloud shell
 #   -rg       - Filter on Region
