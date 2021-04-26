@@ -28,6 +28,7 @@ import argparse
 # global parameters
 object_storage_bucket = "bucket-tag"
 anyday_value = '0,0,0,0,0,0,0,*,*,*,*,*,*,*,*,*,*,*,*,*,0,0,0,0'
+production_value = '*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*'
 created_by_namespace = "TagDefaults"
 
 
@@ -115,7 +116,7 @@ def create_signer(config_profile, is_instance_principals, is_delegation_token):
 ##########################################################################
 # change_tag
 ##########################################################################
-def change_tag(collection):
+def change_tag(collection, tag_value):
     try:
         change = 0
         error = 0
@@ -125,7 +126,7 @@ def change_tag(collection):
             print("Resource name: {}, Resource Type: {}, Resource id: {}".format(r.display_name, r.resource_type, r.identifier))
             print("   " + str(x))
             # TODO Use a prefined here. Fomart{Namespace:{tag key, tag value}
-            x.update({'Schedule': {'AnyDay': anyday_value}})
+            x.update({'Schedule': {'AnyDay': tag_value}})
             print("   " + str(x))
 
             if r.resource_type == "Instance":
@@ -391,6 +392,34 @@ def mysql_search(tag_collection, report_collection, compartments):
 
 
 ##########################################################################
+# Gather all production compartments ocid
+##########################################################################
+def production_list(query):
+    prod = []
+    for r in query:
+        prod.append(r.identifier)
+    return prod
+
+
+##########################################################################
+# Separate resources in to 2 different ResourceSummaryCollection
+##########################################################################
+def separate_resources(collection, prod_list):
+    production_resource = []
+    non_production_resource = []
+    for elem in collection:
+        if elem.compartment_id in prod_list:
+            print(elem.display_name)
+            production_resource.append(elem)
+        else:
+            non_production_resource.append(elem)
+
+    production_results = oci.resource_search.models.ResourceSummaryCollection().items = production_resource
+
+    return non_production_resource, production_results
+
+
+##########################################################################
 # Main
 ##########################################################################
 if __name__ == '__main__':
@@ -403,6 +432,7 @@ if __name__ == '__main__':
     parser.add_argument('-rg', default="", dest='filter_region', help='Filter Region')
     parser.add_argument('-ic', default="", dest='compartment_include', help='Include Compartment OCID')
     parser.add_argument('-ec', default="", dest='compartment_exclude', help='Exclude Compartment OCID')
+    parser.add_argument('-pc', default="", dest='tag_namespace_production', help='Exclude Tagged Production Compartment OCID')
     cmd = parser.parse_args()
     filter_region = cmd.filter_region
 
@@ -483,17 +513,26 @@ if __name__ == '__main__':
         query_tag_not_exist += " && compartmentId != '" + compartment_exclude + "'" if compartment_exclude else ""
         query_tag_exist = query_tag_not_exist.replace("!= 'Schedule'", "= 'Schedule'")
 
+        # fine all comparments that part of production
+        query_production_string = "query compartment resources where definedTags.key = " + '\'' + cmd.tag_namespace_production + '\''
+        query_production_results = search_oci_query(query_production_string)
         # get collection to tag
         collection_to_tag = search_oci_query(query_tag_not_exist)
 
         # get collection to report when tag exist
         collection_to_report = search_oci_query(query_tag_exist)
 
+        production_compartments = production_list(query_production_results)
+
         # add mysql tags to the collections
         collection_to_tag, collection_to_report = mysql_search(collection_to_tag, collection_to_report, compartments)
+        collection_to_tag, production_collection = separate_resources(collection_to_tag, production_compartments)
 
-        # change tag
-        change_tag(collection_to_tag)
+        # change tag non-production
+        change_tag(collection_to_tag, anyday_value)
+
+        # change tag production
+        change_tag(production_collection, production_value)
 
         # For object storage change to home region to store the info
         config['region'] = tenancy_home_region
@@ -502,7 +541,7 @@ if __name__ == '__main__':
 
         # report tag without shutdown
         print("\nFind Tags without shutdown and store in object storage bucket '" + object_storage_bucket + "'")
-        findtags(collection_to_report, region_name)
+        #findtags(collection_to_report, region_name)
 
     print("\nThank you for using the OCI API today, goodbye.")
     exit()
