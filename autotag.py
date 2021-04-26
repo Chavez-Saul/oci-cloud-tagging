@@ -409,7 +409,6 @@ def separate_resources(collection, prod_list):
     non_production_resource = []
     for elem in collection:
         if elem.compartment_id in prod_list:
-            print(elem.display_name)
             production_resource.append(elem)
         else:
             non_production_resource.append(elem)
@@ -541,7 +540,7 @@ if __name__ == '__main__':
 
         # report tag without shutdown
         print("\nFind Tags without shutdown and store in object storage bucket '" + object_storage_bucket + "'")
-        #findtags(collection_to_report, region_name)
+        findtags(collection_to_report, region_name)
 
     print("\nThank you for using the OCI API today, goodbye.")
     exit()
