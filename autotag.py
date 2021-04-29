@@ -9,13 +9,15 @@
 ##########################################################################
 # Application Command line parameters
 #
-#   -t config - Config file section to use (tenancy profile)
-#   -ip       - Use Instance Principals for Authentication
-#   -dt       - Use Instance Principals with delegation token for cloud shell
-#   -rg       - Filter on Region
-#   -ic       - include compartment ocid
-#   -ec       - exclude compartment ocid
-#   -h        - help
+#   -t config  - Config file section to use (tenancy profile)
+#   -ip        - Use Instance Principals for Authentication
+#   -dt        - Use Instance Principals with delegation token for cloud shell
+#   -rg        - Filter on Region
+#   -ic        - include compartment ocid
+#   -ec        - exclude compartment ocid
+#   -pc        - tag production Compartment OCID with production schedule
+#   -skipmysql - skip mysql for long running job
+#   -h         - help
 #
 # Required Object Storage name "bucket-tag" at home region
 ##########################################################################
@@ -30,6 +32,7 @@ object_storage_bucket = "bucket-tag"
 anyday_value = '0,0,0,0,0,0,0,*,*,*,*,*,*,*,*,*,*,*,*,*,0,0,0,0'
 production_value = '*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*'
 created_by_namespace = "TagDefaults"
+version = "2021.04.29"
 
 
 ##########################################################################
@@ -262,39 +265,42 @@ def findtags(collection, region_name):
     tagfile = "tag-" + str(datetime.date.today()) + "-" + region_name + ".csv"
     num = 0
 
-    with open(tagfile, "w") as out_file:
-        tag_writer = csv.writer(out_file, delimiter=',', quotechar='"')
-        tag_writer.writerow(["Resource Name", "Resource Type", "Schedule", "Username"])
+    if len(collection) == 0:
+        print("   No tags in collections, skipping")
+    else:
+        with open(tagfile, "w") as out_file:
+            tag_writer = csv.writer(out_file, delimiter=',', quotechar='"')
+            tag_writer.writerow(["Resource Name", "Resource Type", "Schedule", "Username"])
 
-        # Look for a schedule with AnyDay, WeekDay, and Weekend.
-        for r in collection:
-            tag = r.defined_tags['Schedule']
+            # Look for a schedule with AnyDay, WeekDay, and Weekend.
+            for r in collection:
+                tag = r.defined_tags['Schedule']
 
-            user = ""
-            if created_by_namespace in r.defined_tags:
-                if 'Created_by' in r.defined_tags[created_by_namespace]:
-                    user = r.defined_tags[created_by_namespace]['Created_by']
+                user = ""
+                if created_by_namespace in r.defined_tags:
+                    if 'Created_by' in r.defined_tags[created_by_namespace]:
+                        user = r.defined_tags[created_by_namespace]['Created_by']
 
-            if 'AnyDay' in tag:
-                if '0' not in tag['AnyDay']:
-                    tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
-                    num += 1
-            elif 'WeekDay' in tag:
-                if '0' not in tag['WeekDay']:
-                    tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
-                    num += 1
-            elif 'Weekend' in tag:
-                if '0' not in tag['Weekend']:
-                    tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
-                    num += 1
+                if 'AnyDay' in tag:
+                    if '0' not in tag['AnyDay']:
+                        tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
+                        num += 1
+                elif 'WeekDay' in tag:
+                    if '0' not in tag['WeekDay']:
+                        tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
+                        num += 1
+                elif 'Weekend' in tag:
+                    if '0' not in tag['Weekend']:
+                        tag_writer.writerow([r.display_name, r.resource_type, r.defined_tags['Schedule'], user])
+                        num += 1
 
-    print("   " + str(num) + " tags founds")
+        print("   " + str(num) + " tags founds")
 
-    # load to object storage only if records exist
-    if num > 0:
-        print("   Loading data to object storage bucket '" + object_storage_bucket + "'")
-        with open(tagfile, 'rb') as in_File:
-            os.put_object(os.get_namespace().data, object_storage_bucket, tagfile, in_File)
+        # load to object storage only if records exist
+        if num > 0:
+            print("   Loading data to object storage bucket '" + object_storage_bucket + "'")
+            with open(tagfile, 'rb') as in_File:
+                os.put_object(os.get_namespace().data, object_storage_bucket, tagfile, in_File)
 
 
 ##########################################################################
@@ -428,6 +434,7 @@ if __name__ == '__main__':
     parser.add_argument('-t', default="", dest='config_profile', help='Config file section to use (tenancy profile)')
     parser.add_argument('-ip', action='store_true', default=False, dest='is_instance_principals', help='Use Instance Principals for Authentication')
     parser.add_argument('-dt', action='store_true', default=False, dest='is_delegation_token', help='Use Delegation Token for Authentication')
+    parser.add_argument('-skipmysql', action='store_true', default=False, dest='skip_mysql', help='Skip MYSQL Scan')
     parser.add_argument('-rg', default="", dest='filter_region', help='Filter Region')
     parser.add_argument('-ic', default="", dest='compartment_include', help='Include Compartment OCID')
     parser.add_argument('-ec', default="", dest='compartment_exclude', help='Exclude Compartment OCID')
@@ -460,6 +467,7 @@ if __name__ == '__main__':
             if reg.is_home_region:
                 tenancy_home_region = str(reg.region_name)
 
+        print("Version       : " + str(version))
         print("Tenant Name   : " + str(tenancy.name))
         print("Tenant Id     : " + tenancy.id)
         print("Home Region   : " + tenancy_home_region)
@@ -512,26 +520,37 @@ if __name__ == '__main__':
         query_tag_not_exist += " && compartmentId != '" + compartment_exclude + "'" if compartment_exclude else ""
         query_tag_exist = query_tag_not_exist.replace("!= 'Schedule'", "= 'Schedule'")
 
-        # fine all comparments that part of production
-        query_production_string = "query compartment resources where definedTags.key = " + '\'' + cmd.tag_namespace_production + '\''
-        query_production_results = search_oci_query(query_production_string)
+        # find all comparments that part of production
+        production_compartments = []
+        if cmd.tag_namespace_production:
+            query_production_string = "query compartment resources where definedTags.key = " + '\'' + cmd.tag_namespace_production + '\''
+            query_production_results = search_oci_query(query_production_string)
+            production_compartments = production_list(query_production_results)
+
         # get collection to tag
         collection_to_tag = search_oci_query(query_tag_not_exist)
 
         # get collection to report when tag exist
         collection_to_report = search_oci_query(query_tag_exist)
 
-        production_compartments = production_list(query_production_results)
-
         # add mysql tags to the collections
-        collection_to_tag, collection_to_report = mysql_search(collection_to_tag, collection_to_report, compartments)
+        if not cmd.skip_mysql:
+            collection_to_tag, collection_to_report = mysql_search(collection_to_tag, collection_to_report, compartments)
+
+        # seperate resources between production and non prod
         collection_to_tag, production_collection = separate_resources(collection_to_tag, production_compartments)
 
+        print("\n    Non Prod   Resources Found = " + str(len(collection_to_tag)))
+        if cmd.tag_namespace_production:
+            print("    Production Resources Found = " + str(len(production_collection)))
+
         # change tag non-production
-        change_tag(collection_to_tag, anyday_value)
+        if collection_to_tag:
+            change_tag(collection_to_tag, anyday_value)
 
         # change tag production
-        change_tag(production_collection, production_value)
+        if production_collection:
+            change_tag(production_collection, production_value)
 
         # For object storage change to home region to store the info
         config['region'] = tenancy_home_region

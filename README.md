@@ -7,13 +7,15 @@ This script takes the following parameter
 ```
  Application Command line parameters
 
-   -t config - Config file section to use (tenancy profile)
-   -ip       - Use Instance Principals for Authentication
-   -dt       - Use Instance Principals with delegation token for cloud shell
-   -rg       - Filter on Region
-   -ic       - include compartment ocid
-   -ec       - exclude compartment ocid
-   -h        - help
+   -t config  - Config file section to use (tenancy profile)
+   -ip        - Use Instance Principals for Authentication
+   -dt        - Use Instance Principals with delegation token for cloud shell
+   -rg        - Filter on Region
+   -ic        - include compartment ocid
+   -ec        - exclude compartment ocid
+   -pc        - tag production Compartment OCID with production schedule
+   -skipmysql - skip mysql for long running job
+   -h         - help
 
  Required Object Storage name "bucket-tag" at home region
  ```
