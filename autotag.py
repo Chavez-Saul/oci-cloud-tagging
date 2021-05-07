@@ -32,7 +32,7 @@ object_storage_bucket = "bucket-tag"
 anyday_value = '0,0,0,0,0,0,0,*,*,*,*,*,*,*,*,*,*,*,*,*,0,0,0,0'
 production_value = '*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*'
 created_by_namespace = "TagDefaults"
-version = "2021.04.29"
+version = "2021.05.07"
 
 
 ##########################################################################
@@ -379,9 +379,9 @@ def mysql_search(tag_collection, report_collection, compartments):
                     summary.resource_type = "MysqlDBInstance"
 
                     if "Schedule" in mysql_instance.defined_tags:
-                        tag_collection.append(summary)
-                    else:
                         report_collection.append(summary)
+                    else:
+                        tag_collection.append(summary)
 
                     cnt += 1
 
