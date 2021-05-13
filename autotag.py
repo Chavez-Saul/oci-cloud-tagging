@@ -32,7 +32,7 @@ object_storage_bucket = "bucket-tag"
 anyday_value = '0,0,0,0,0,0,0,*,*,*,*,*,*,*,*,*,*,*,*,*,0,0,0,0'
 production_value = '*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*,*'
 created_by_namespace = "TagDefaults"
-version = "2021.05.07"
+version = "2021.05.12"
 
 
 ##########################################################################
@@ -128,7 +128,7 @@ def change_tag(collection, tag_value):
 
             print("Resource name: {}, Resource Type: {}, Resource id: {}".format(r.display_name, r.resource_type, r.identifier))
             print("   " + str(x))
-            # TODO Use a prefined here. Fomart{Namespace:{tag key, tag value}
+
             x.update({'Schedule': {'AnyDay': tag_value}})
             print("   " + str(x))
 
@@ -188,6 +188,9 @@ def change_tag(collection, tag_value):
                     print("Resource tag has been updated.\n")
                     change += 1
                 except Exception as e:
+                    if "update embedding Analytics service" in e.message:
+                        print("FAW is not supported, continue.\n")
+                        continue
                     print("!!! Error occurred for resource: {}, id: {},\n Error Msg: {}".format(r.display_name, r.identifier, e))
                     error += 1
 
@@ -456,6 +459,7 @@ if __name__ == '__main__':
     compartments = []
     tenancy = None
     tenancy_home_region = ""
+    management_paas_compartment_id = ""
     try:
         print("\nConnecting to Identity Service...")
         identity = oci.identity.IdentityClient(config, signer=signer)
@@ -463,6 +467,12 @@ if __name__ == '__main__':
         regions = identity.list_region_subscriptions(tenancy.id).data
         compartments = identity_read_compartments(identity, tenancy)
 
+        # find managed paas compartment
+        for c in compartments:
+            if c.name == "ManagedCompartmentForPaaS":
+                management_paas_compartment_id = c.id
+
+        # all regions
         for reg in regions:
             if reg.is_home_region:
                 tenancy_home_region = str(reg.region_name)
@@ -516,6 +526,7 @@ if __name__ == '__main__':
         query_tag_not_exist += "    definedTags.namespace != 'Schedule' && "
         query_tag_not_exist += "    ( lifecycleState = 'Active' ||  lifecycleState = 'Running' || lifecycleState = 'Stopped' || "
         query_tag_not_exist += "    lifecycleState = 'Available' ) "
+        query_tag_not_exist += " && compartmentId  != '" + management_paas_compartment_id + "'" if management_paas_compartment_id else ""
         query_tag_not_exist += " && compartmentId  = '" + compartment_include + "'" if compartment_include else ""
         query_tag_not_exist += " && compartmentId != '" + compartment_exclude + "'" if compartment_exclude else ""
         query_tag_exist = query_tag_not_exist.replace("!= 'Schedule'", "= 'Schedule'")
